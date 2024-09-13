@@ -1,0 +1,611 @@
+var table;
+
+$(document).ready(function() {
+    // Load table data from Flask backend
+    $.getJSON('/get_data', function(data) {
+        table = $('#fruitSamplesTable').DataTable({
+            data: data,
+            columns: [
+                { data: 'Sample ID' },
+                { 
+                    data: 'Sample Name', 
+                    render: function(data) {
+                        return `<span class="clickable" title="Click to find similar samples">${data}</span>`;
+                    }
+                },
+                { data: 'Cultivar Name' },
+                { 
+                    data: 'Norbaeocystin (mg/g)', 
+                    render: function(data) {
+                        return `<span class="compound-clickable">${data}</span>`;
+                    }
+                },
+                { 
+                    data: 'Baeocystin (mg/g)', 
+                    render: function(data) {
+                        return `<span class="compound-clickable">${data}</span>`;
+                    }
+                },
+                { 
+                    data: 'Psilocybin (mg/g)', 
+                    render: function(data) {
+                        return `<span class="compound-clickable">${data}</span>`;
+                    }
+                },
+                { 
+                    data: 'Psilocin (mg/g)', 
+                    render: function(data) {
+                        return `<span class="compound-clickable">${data}</span>`;
+                    }
+                },
+                { data: 'PsilocinEQ (mg/g)' }
+            ],
+            order: [[7, 'desc']]  // Sort by PsilocinEQ in descending order
+        });
+
+        // Handle row click event for sample names
+        $('#fruitSamplesTable tbody').on('click', '.clickable', function() {
+            var clickedSampleName = $(this).text();
+            var filteredSamples = data.filter(sample => sample['Sample Name'] === clickedSampleName);
+            var psilocinEQValues = filteredSamples.map(sample => parseFloat(sample['PsilocinEQ (mg/g)']));
+
+            var minPsilocin = Math.min(...psilocinEQValues);
+            var maxPsilocin = Math.max(...psilocinEQValues);
+            var avgPsilocin = (psilocinEQValues.reduce((a, b) => a + b, 0) / psilocinEQValues.length).toFixed(3);
+
+            $('#strainName').text(clickedSampleName);
+            $('#sampleCount').text(filteredSamples.length);
+            $('#minPsilocin').text(minPsilocin);
+            $('#maxPsilocin').text(maxPsilocin);
+            $('#avgPsilocin').text(avgPsilocin);
+
+            $('#summaryBox').show();
+        });
+
+        // Handle click on compound values
+        $('#fruitSamplesTable tbody').on('click', '.compound-clickable', function() {
+            var clickedValue = parseFloat($(this).text());
+            var columnName = $(this).parent().index();
+
+            var similarSamples = data.filter(sample => {
+                var value = parseFloat(sample[Object.keys(sample)[columnName]]);
+                return Math.abs(value - clickedValue) < 0.1;  // Adjust threshold for similarity
+            });
+
+            var sampleNames = similarSamples.map(sample => sample['Sample Name']);
+            alert('Samples with similar values: ' + sampleNames.join(', '));
+        });
+
+        // Close the summary box
+        $('#summaryBoxClose').on('click', function() {
+            $('#summaryBox').hide();
+        });
+    });
+});
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tryptomics Data and Chatbot</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            text-align: center;
+            margin-top: 20px;
+        }
+        #fruitSamplesTable_wrapper {
+            margin: 20px;
+        }
+        #chatbox {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: 300px;
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        #chatbox input {
+            width: 80%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        #chatbox button {
+            width: 18%;
+            padding: 8px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #chatlog {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #fff;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        #suggestions {
+            margin-top: 10px;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        #suggestions button {
+            margin: 5px 0;
+            padding: 5px 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+        }
+        .clickable {
+            color: blue;
+            cursor: pointer;
+        }
+        .clickable:hover {
+            text-decoration: underline;
+        }
+        .compound-clickable:hover {
+            text-decoration: underline;
+            color: red;
+            cursor: pointer;
+        }
+        #summaryBox {
+            position: fixed;
+            top: 10%;
+            left: 50%;
+            transform: translate(-50%, -10%);
+            background-color: white;
+            padding: 20px;
+            border: 2px solid #ccc;
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 9999;
+        }
+        #summaryBoxClose {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            cursor: pointer;
+            color: red;
+            font-weight: bold;
+        }
+        #matchingSamples {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        /* Modal styling */
+        #chartModal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        #chartModalContent {
+            background-color: white;
+            margin: 10% auto;
+            padding: 20px;
+            width: 50%;
+            max-width: 500px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        #chartClose {
+            color: red;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Fruit Samples Data</h1>
+    <table id="fruitSamplesTable" class="display">
+        <thead>
+            <tr>
+                <th>Sample ID</th>
+                <th>Sample Name</th>
+                <th>Cultivar Name</th>
+                <th>Norbaeocystin (mg/g)</th>
+                <th>Baeocystin (mg/g)</th>
+                <th>Psilocybin (mg/g)</th>
+                <th>Psilocin (mg/g)</th>
+                <th>PsilocinEQ (mg/g)</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <!-- Summary box to display when a sample name is clicked -->
+    <div id="summaryBox">
+        <span id="summaryBoxClose">X</span>
+        <h2>Summary for <span id="strainName"></span></h2>
+        <p>Total Samples: <span id="sampleCount"></span></p>
+        <p>Min PsilocinEQ (mg/serving): <span id="minPsilocin"></span></p>
+        <p>Max PsilocinEQ (mg/serving): <span id="maxPsilocin"></span></p>
+        <p>Avg PsilocinEQ (mg/serving): <span id="avgPsilocin"></span></p>
+
+        <div id="matchingSamples">
+            <!-- Checkboxes for similar sample names will go here -->
+        </div>
+        <button id="checkAll">Check All</button>
+        <button id="uncheckAll">Uncheck All</button>
+        <br><br>
+        <button id="generateGraph">Graph Results</button>
+    </div>
+
+    <!-- Modal for displaying the graph -->
+    <div id="chartModal">
+        <div id="chartModalContent">
+            <span id="chartClose">&times;</span>
+            <canvas id="myChart" width="400" height="300"></canvas>
+        </div>
+    </div>
+
+    <!-- Chatbot area -->
+    <div id="chatbox">
+        <div id="chatlog"></div>
+        <input id="userInput" placeholder="Ask me anything...">
+        <button onclick="sendMessage()">Send</button>
+
+        <!-- Suggested Questions -->
+        <div id="suggestions">
+            <h4>Suggested Questions:</h4>
+            <button onclick="askSuggestion('Show me the highest potency samples')">Show me the highest potency samples</button>
+            <button onclick="askSuggestion('Which samples are high in Norbaeocystin')">Which samples are high in Norbaeocystin?</button>
+            <button onclick="askSuggestion('Show me a heatmap of the data')">Show me a heatmap of the data</button>
+            <button onclick="askSuggestion('Display a bar chart of Psilocin')">Display a bar chart of Psilocin</button>
+        </div>
+    </div>
+
+    <script>
+        var table;
+
+        $(document).ready(function() {
+            // Load table data from Flask backend
+            $.getJSON('/get_data', function(data) {
+                table = $('#fruitSamplesTable').DataTable({
+                    data: data,
+                    columns: [
+                        { data: 'Sample ID' },
+                        { 
+                            data: 'Sample Name', 
+                            render: function(data) {
+                                return `<span class="clickable" title="Click to find similar samples">${data}</span>`;
+                            }
+                        },
+                        { data: 'Cultivar Name' },
+                        { 
+                            data: 'Norbaeocystin (mg/g)', 
+                            render: function(data) {
+                                return `<span class="compound-clickable">${data}</span>`;
+                            }
+                        },
+                        { 
+                            data: 'Baeocystin (mg/g)', 
+                            render: function(data) {
+                                return `<span class="compound-clickable">${data}</span>`;
+                            }
+                        },
+                        { 
+                            data: 'Psilocybin (mg/g)', 
+                            render: function(data) {
+                                return `<span class="compound-clickable">${data}</span>`;
+                            }
+                        },
+                        { 
+                            data: 'Psilocin (mg/g)', 
+                            render: function(data) {
+                                return `<span class="compound-clickable">${data}</span>`;
+                            }
+                        },
+                        { data: 'PsilocinEQ (mg/g)' }
+                    ],
+                    order: [[7, 'desc']]  // Sort by PsilocinEQ in descending order
+                });
+
+			 // Handle row click event for sample names with lax matching
+			$('#fruitSamplesTable tbody').on('click', '.clickable', function() {
+				var clickedSampleName = $(this).text();
+				var lowerClickedSampleName = clickedSampleName.toLowerCase(); // Make the search case-insensitive
+
+				var filteredSamples = data.filter(sample => sample['Sample Name'].toLowerCase().includes(lowerClickedSampleName));
+
+				var psilocinEQValues = filteredSamples.map(sample => parseFloat(sample['PsilocinEQ (mg/g)']));
+
+				var minPsilocin = Math.min(...psilocinEQValues);
+				var maxPsilocin = Math.max(...psilocinEQValues);
+				var avgPsilocin = (psilocinEQValues.reduce((a, b) => a + b, 0) / psilocinEQValues.length).toFixed(3);
+
+				$('#strainName').text(clickedSampleName);
+				$('#sampleCount').text(filteredSamples.length);
+				$('#minPsilocin').text(minPsilocin);
+				$('#maxPsilocin').text(maxPsilocin);
+				$('#avgPsilocin').text(avgPsilocin);
+
+				// Add checkboxes for similar samples
+				var checkboxesHTML = '';
+				filteredSamples.forEach(function(sample) {
+					checkboxesHTML += `<label><input type="checkbox" class="sampleCheckbox" value="${sample['Sample Name']}" checked> ${sample['Sample Name']}</label><br>`;
+				});
+				$('#matchingSamples').html(checkboxesHTML);
+				$('#summaryBox').show();
+			});
+
+
+                // Handle click on compound values
+                $('#fruitSamplesTable tbody').on('click', '.compound-clickable', function() {
+                    var clickedValue = parseFloat($(this).text());
+                    var columnName = $(this).parent().index();
+
+                    var similarSamples = data.filter(sample => {
+                        var value = parseFloat(sample[Object.keys(sample)[columnName]]);
+                        return Math.abs(value - clickedValue) < 0.1;  // Adjust threshold for similarity
+                    });
+
+                    var sampleNames = similarSamples.map(sample => sample['Sample Name']);
+                    alert('Samples with similar values: ' + sampleNames.join(', '));
+                });
+
+                // Select all/none functionality
+                $('#checkAll').on('click', function() {
+                    $('.sampleCheckbox').prop('checked', true);
+                });
+
+                $('#uncheckAll').on('click', function() {
+                    $('.sampleCheckbox').prop('checked', false);
+                });
+
+                // Graph generation button click event
+                $('#generateGraph').on('click', function() {
+                    var selectedSamples = [];
+                    $('.sampleCheckbox:checked').each(function() {
+                        selectedSamples.push($(this).val());
+                    });
+
+                    if (selectedSamples.length > 0) {
+                        // Filter selected samples for PsilocinEQ recalculation
+                        var filteredSamples = data.filter(sample => selectedSamples.includes(sample['Sample Name']));
+                        var psilocinEQValues = filteredSamples.map(sample => parseFloat(sample['PsilocinEQ (mg/g)']));
+
+                        var minPsilocin = Math.min(...psilocinEQValues);
+                        var maxPsilocin = Math.max(...psilocinEQValues);
+                        var avgPsilocin = (psilocinEQValues.reduce((a, b) => a + b, 0) / psilocinEQValues.length).toFixed(3);
+
+                        $('#minPsilocin').text(minPsilocin);
+                        $('#maxPsilocin').text(maxPsilocin);
+                        $('#avgPsilocin').text(avgPsilocin);
+
+                        // Show the modal with the graph
+                        showGraphModal(selectedSamples, psilocinEQValues);
+                    } else {
+                        alert('Please select at least one sample.');
+                    }
+                });
+
+                // Close the summary box
+                $('#summaryBoxClose').on('click', function() {
+                    $('#summaryBox').hide();
+                });
+            });
+
+            // Handle closing of the chart modal
+            $('#chartClose').on('click', function() {
+                $('#chartModal').hide();
+            });
+        });
+
+        // Function to show the chart modal
+        function showGraphModal(sampleNames, psilocinEQValues) {
+            var ctx = document.getElementById('myChart').getContext('2d');
+            
+            // Clear any previous chart
+            if (window.barChart) {
+                window.barChart.destroy();
+            }
+
+            // Generate the new bar chart
+            window.barChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sampleNames,
+                    datasets: [{
+                        label: 'PsilocinEQ (mg/g)',
+                        data: psilocinEQValues,
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            // Display the modal
+            $('#chartModal').show();
+        }
+
+        // Chatbot interaction
+        function sendMessage() {
+            var message = $('#userInput').val();
+            $('#chatlog').append('<div>You: ' + message + '</div>');
+            $('#userInput').val('');
+
+            // Send query to Flask backend for processing
+            $.ajax({
+                url: '/chatbot',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ query: message }),
+                success: function(response) {
+                    $('#chatlog').append('<div>Bot: ' + response.message + '</div>');
+
+                    // If the response contains chart data, render it
+                    if (response.chartData) {
+                        renderChart(response.chartData);
+                    }
+
+                    // If the response contains table filtering instructions, filter the table
+                    if (response.filter && response.filter.length > 0) {
+                        filterTable(response.filter);
+                    }
+                }
+            });
+        }
+
+        // Suggested questions handler
+        function askSuggestion(question) {
+            $('#userInput').val(question);
+            sendMessage();
+        }
+
+        // Function to filter the table based on user input
+        function filterTable(filterText) {
+            table.search(filterText).draw();
+        }
+
+        // Function to render charts from chatbot
+        function renderChart(chartData) {
+            var ctx = document.getElementById('myChart').getContext('2d');
+            new Chart(ctx, {
+                type: chartData.type,
+                data: {
+                    labels: chartData.labels,
+                    datasets: chartData.datasets
+                },
+                options: chartData.options
+            });
+        }
+    </script>
+</body>
+</html>
+
+// Function to handle chatbot responses
+function sendMessage() {
+    var message = $('#userInput').val();
+    $('#chatlog').append('<div>You: ' + message + '</div>');
+    $('#userInput').val('');
+
+    // Process user input and provide appropriate responses
+    if (message.toLowerCase().includes('highest potency')) {
+        showHighestPotencySamples();
+    } else if (message.toLowerCase().includes('high in norbaeocystin')) {
+        showHighNorbaeocystinSamples();
+    } else if (message.toLowerCase().includes('heatmap')) {
+        generateHeatmap();
+    } else if (message.toLowerCase().includes('bar chart')) {
+        generateBarChart();
+    } else {
+        $('#chatlog').append('<div>Bot: Sorry, I didn\'t understand that. Try asking for "highest potency samples" or "samples high in Norbaeocystin".</div>');
+    }
+}
+
+// Suggested question handler
+function askSuggestion(question) {
+    $('#userInput').val(question);
+    sendMessage();
+}
+
+// Function to display highest potency samples
+function showHighestPotencySamples() {
+    $('#chatlog').append('<div>Bot: Showing the highest potency samples (by PsilocinEQ).</div>');
+    table.order([7, 'desc']).draw(); // PsilocinEQ is in the 8th column (index 7)
+}
+
+// Function to show samples high in Norbaeocystin
+function showHighNorbaeocystinSamples() {
+    $('#chatlog').append('<div>Bot: Showing samples high in Norbaeocystin.</div>');
+    table.column(3).search('^(1[0-9]|[2-9][0-9]|[1-9]{3,})', true, false).draw(); // High = >=10 mg/g
+}
+
+// Function to generate a heatmap (simulated)
+function generateHeatmap() {
+    $('#chatlog').append('<div>Bot: Generating a heatmap of the data...</div>');
+    renderChart({
+        type: 'heatmap',
+        labels: ['Sample 1', 'Sample 2', 'Sample 3'],
+        datasets: [{
+            label: 'Heatmap',
+            data: [15, 10, 5], // Example data
+            backgroundColor: ['red', 'green', 'blue']
+        }],
+        options: {
+            scales: {
+                x: { beginAtZero: true },
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+// Function to generate a bar chart of Psilocin
+function generateBarChart() {
+    $('#chatlog').append('<div>Bot: Generating a bar chart of Psilocin...</div>');
+    var labels = [];
+    var data = [];
+    table.rows().every(function () {
+        var rowData = this.data();
+        labels.push(rowData['Sample Name']);
+        data.push(parseFloat(rowData['Psilocin (mg/g)']));
+    });
+
+    renderChart({
+        type: 'bar',
+        labels: labels,
+        datasets: [{
+            label: 'Psilocin (mg/g)',
+            data: data,
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }],
+        options: {
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+// Function to render charts
+function renderChart(chartData) {
+    var ctx = document.getElementById('myChart').getContext('2d');
+    new Chart(ctx, {
+        type: chartData.type,
+        data: {
+            labels: chartData.labels,
+            datasets: chartData.datasets
+        },
+        options: chartData.options
+    });
+}
+

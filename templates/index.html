@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tryptomics Data and Chatbot</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Interactive Table and Customizable Graph</h1>
+
+    <!-- Compound Selection -->
+    <label>Select Compounds to Display:</label><br>
+    <input type="checkbox" id="PsilocinEQ" checked> PsilocinEQ<br>
+    <input type="checkbox" id="Norbaeocystin"> Norbaeocystin<br>
+    <input type="checkbox" id="Baeocystin"> Baeocystin<br>
+    <input type="checkbox" id="Psilocybin"> Psilocybin<br>
+    <input type="checkbox" id="Psilocin"> Psilocin<br>
+
+    <!-- Interactive Table -->
+    <table id="fruitSamplesTable" class="display">
+        <thead>
+            <tr>
+                <th>Select</th>
+                <th>Sample ID</th>
+                <th>Sample Name</th>
+                <th>PsilocinEQ (mg/g)</th>
+                <th>Norbaeocystin (mg/g)</th>
+                <th>Baeocystin (mg/g)</th>
+                <th>Psilocybin (mg/g)</th>
+                <th>Psilocin (mg/g)</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <button id="generateGraphFromTable">Generate Graph from Selected</button>
+
+    <!-- Modal for displaying the graph -->
+    <div id="chartModal">
+        <div id="chartModalContent">
+            <span id="chartClose">&times;</span>
+            <div id="chartsContainer"></div>  <!-- Container for multiple charts -->
+        </div>
+    </div>
+
+    <!-- Chatbot area -->
+    <div id="chatbox">
+        <div id="chatlog"></div>
+        <input id="userInput" placeholder="Ask me anything...">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        var table;
+
+        $(document).ready(function() {
+            // Fetch table data from Flask
+            $.getJSON('/get_data', function(data) {
+                table = $('#fruitSamplesTable').DataTable({
+                    data: data,
+                    columns: [
+                        {
+                            data: null,
+                            render: function (data, type, row) {
+                                return `<input type="checkbox" class="select-sample" value="${row['Sample ID']}">`;
+                            }
+                        },
+                        { data: 'Sample ID' },
+                        { data: 'Sample Name' },
+                        { data: 'PsilocinEQ (mg/g)' },
+                        { data: 'Norbaeocystin (mg/g)' },
+                        { data: 'Baeocystin (mg/g)' },
+                        { data: 'Psilocybin (mg/g)' },
+                        { data: 'Psilocin (mg/g)' }
+                    ]
+                });
+
+                // Handle graph generation button click for selected samples
+                $('#generateGraphFromTable').on('click', function() {
+                    var selectedSamples = [];
+                    table.$('.select-sample:checked').each(function() {
+                        selectedSamples.push($(this).closest('tr').find('td:eq(2)').text());  // Get Sample Name
+                    });
+
+                    if (selectedSamples.length > 0) {
+                        generateMultipleGraphsFromSelectedSamples(selectedSamples);
+                    } else {
+                        alert('Please select at least one sample.');
+                    }
+                });
+            });
+        });
+
+        // Function to generate multiple graphs from selected samples
+        function generateMultipleGraphsFromSelectedSamples(sampleNames) {
+            var chartsContainer = document.getElementById('chartsContainer');
+            chartsContainer.innerHTML = '';  // Clear the container before adding new charts
+
+            // Determine which compounds are selected by the user
+            var selectedCompounds = [];
+            if (document.getElementById('PsilocinEQ').checked) selectedCompounds.push('PsilocinEQ (mg/g)');
+            if (document.getElementById('Norbaeocystin').checked) selectedCompounds.push('Norbaeocystin (mg/g)');
+            if (document.getElementById('Baeocystin').checked) selectedCompounds.push('Baeocystin (mg/g)');
+            if (document.getElementById('Psilocybin').checked) selectedCompounds.push('Psilocybin (mg/g)');
+            if (document.getElementById('Psilocin').checked) selectedCompounds.push('Psilocin (mg/g)');
+
+            if (selectedCompounds.length === 0) {
+                alert('Please select at least one compound to display.');
+                return;
+            }
+
+            sampleNames.forEach(function(sampleName, index) {
+                var canvas = document.createElement('canvas');
+                canvas.id = 'chart-' + index;
+                chartsContainer.appendChild(canvas);
+                var ctx = canvas.getContext('2d');
+
+                // Fetch data for each compound and display in the graph
+                var compoundData = selectedCompounds.map(compound => {
+                    // Here we're assuming the backend returns data in this format. Replace with actual logic.
+                    return Math.random() * 10;  // Replace with actual data from the Flask backend
+                });
+
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [sampleName],
+                        datasets: selectedCompounds.map((compound, i) => ({
+                            label: compound,
+                            data: [compoundData[i]],
+                            backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }))
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: {
+                            padding: {
+                                left: 10,
+                                right: 10,
+                                top: 10,
+                                bottom: 10
+                            }
+                        }
+                    }
+                });
+            });
+
+            $('#chartModal').show();
+        }
+
+        // Handle closing of the chart modal
+        $('#chartClose').on('click', function() {
+            $('#chartModal').hide();
+        });
+
+        // Chatbot interaction
+        function sendMessage() {
+            var message = $('#userInput').val();
+            $('#chatlog').append('<div>You: ' + message + '</div>');
+            $('#userInput').val('');
+
+            $.ajax({
+                url: '/chatbot',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ query: message }),
+                success: function(response) {
+                    $('#chatlog').append('<div>Bot: ' + response.message + '</div>');
+                    if (response.chartData) {
+                        renderChatbotChart(response.chartData);
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+
