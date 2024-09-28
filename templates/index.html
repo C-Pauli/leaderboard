@@ -19,58 +19,6 @@
         #fruitSamplesTable_wrapper {
             margin: 20px;
         }
-        #chatbox {
-            position: fixed;
-            right: 20px;
-            bottom: 20px;
-            width: 300px;
-            background-color: #f1f1f1;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        #chatbox input {
-            width: 80%;
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-        }
-        #chatbox button {
-            width: 18%;
-            padding: 8px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #chatlog {
-            max-height: 300px;
-            overflow-y: auto;
-            background-color: #fff;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }
-        #suggestions {
-            margin-top: 10px;
-            background-color: #f9f9f9;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        #suggestions button {
-            margin: 5px 0;
-            padding: 5px 10px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            width: 100%;
-            text-align: left;
-        }
         .clickable {
             color: blue;
             cursor: pointer;
@@ -157,6 +105,21 @@
             font-size: 20px;
             cursor: pointer;
         }
+		#compoundModal {
+			position: fixed;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			z-index: 9999;
+			display: none;
+		}
+
+		#compoundModalClose {
+			cursor: pointer;
+			color: red;
+			float: right;
+		}
+
     </style>
 </head>
 <body>
@@ -167,7 +130,7 @@
                 <th>Select</th>
                 <th>Sample ID</th>
                 <th>Sample Name</th>
-                <th>Cultivar Name</th>
+                <th>Grower ID</th>
                 <th>Norbaeocystin (mg/g)</th>
                 <th>Baeocystin (mg/g)</th>
                 <th>Psilocybin (mg/g)</th>
@@ -184,9 +147,9 @@
         <span id="summaryBoxClose">X</span>
         <h2>Summary for <span id="strainName"></span></h2>
         <p>Total Samples: <span id="sampleCount"></span></p>
-        <p>Min PsilocinEQ (mg/serving): <span id="minPsilocin"></span></p>
-        <p>Max PsilocinEQ (mg/serving): <span id="maxPsilocin"></span></p>
-        <p>Avg PsilocinEQ (mg/serving): <span id="avgPsilocin"></span></p>
+        <p>Min PsilocinEQ (mg/g): <span id="minPsilocin"></span></p>
+        <p>Max PsilocinEQ (mg/g): <span id="maxPsilocin"></span></p>
+        <p>Avg PsilocinEQ (mg/g): <span id="avgPsilocin"></span></p>
 
         <div id="matchingSamples">
             <!-- Checkboxes for similar sample names will go here -->
@@ -210,20 +173,17 @@
         <h2>Similar Samples</h2>
         <p id="similarSamplesText"></p>
     </div>
-
-    <div id="chatbox">
-        <div id="chatlog"></div>
-        <input id="userInput" placeholder="Ask me anything...">
-        <button onclick="sendMessage()">Send</button>
-
-        <div id="suggestions">
-            <h4>Suggested Questions:</h4>
-            <button onclick="askSuggestion('Show me the highest potency samples')">Show me the highest potency samples</button>
-            <button onclick="askSuggestion('Which samples are high in Norbaeocystin')">Which samples are high in Norbaeocystin?</button>
-            <button onclick="askSuggestion('Show me a heatmap of the data')">Show me a heatmap of the data</button>
-            <button onclick="askSuggestion('Display a bar chart of Psilocin')">Display a bar chart of Psilocin</button>
-        </div>
-    </div>
+	<!-- Modal for selecting compounds and colors -->
+	<div id="compoundModal" style="display: none;">
+		<div style="background-color: white; padding: 20px; border: 2px solid #ccc; box-shadow: 0px 0px 10px rgba(0,0,0,0.5); width: 300px; margin: 0 auto;">
+			<h2>Select Compounds</h2>
+			<div id="compoundSelection">
+				<!-- Compound checkboxes and color pickers will be dynamically inserted here -->
+			</div>
+			<button id="generateCompoundGraph">Generate Graph</button>
+			<button id="compoundModalClose">Close</button>
+		</div>
+	</div>
 
     <script>
         var table;
@@ -249,7 +209,14 @@
                                 return `<span class="clickable" title="Click to find similar samples">${data}</span>`;
                             }
                         },
-                        { data: 'Cultivar Name' },
+			{ data: 'Sample Type' },
+                        {
+                            data: 'Sample Type',
+                            render: function(data) {
+                                return `<span class="clickable" title="Click to find similar samples">${data}</span>`;
+                            }
+                        },
+                        { data: 'Grower ID' },
                         { 
                             data: 'Norbaeocystin (mg/g)',
                             render: function(data) {
@@ -285,12 +252,26 @@
 
                 // Handle row click event for sample names to show summary and stats
                 $('#fruitSamplesTable tbody').on('click', '.clickable', function() {
-                    var clickedSampleName = $(this).text();
-                    var filteredSamples = data.filter(sample => sample['Sample Name'] === clickedSampleName);
+                    var clickedSampleName = $(this).text().toLowerCase().replace(/[^a-z0-9\s]/gi, '').trim(); // Normalize name
+					var clickedSampleWords = clickedSampleName.split(/\s+/); // Split into words for partial matching
+
+					// Filter samples that have at least one word in common with the clicked sample name
+					var filteredSamples = data.filter(sample => {
+						var sampleName = sample['Sample Name'].toLowerCase().replace(/[^a-z0-9\s]/gi, '').trim();
+						var sampleWords = sampleName.split(/\s+/);
+						return clickedSampleWords.some(word => sampleWords.includes(word));
+					});
                     var psilocinEQValues = filteredSamples.map(sample => parseFloat(sample['PsilocinEQ (mg/g)']));
                     var minPsilocin = Math.min(...psilocinEQValues);
                     var maxPsilocin = Math.max(...psilocinEQValues);
                     var avgPsilocin = (psilocinEQValues.reduce((a, b) => a + b, 0) / psilocinEQValues.length).toFixed(3);
+					var psilocinValues = filteredSamples.map(sample => parseFloat(sample['Psilocin (mg/g)']) || 0);
+					var psilocybinValues = filteredSamples.map(sample => parseFloat(sample['Psilocybin (mg/g)']) || 0);
+					var norbaeocystinValues = filteredSamples.map(sample => parseFloat(sample['Norbaeocystin (mg/g)']) || 0);
+					var baeocystinValues = filteredSamples.map(sample => parseFloat(sample['Baeocystin (mg/g)']) || 0);
+					var norpsilocinValues = filteredSamples.map(sample => parseFloat(sample['Norpsilocin (mg/g)']) || 0);
+					var aeruginascinValues = filteredSamples.map(sample => parseFloat(sample['Aeruginascin (mg/g)']) || 0);
+					var fourHOTMTValues = filteredSamples.map(sample => parseFloat(sample['4-HO-TMT (mg/g)']) || 0);
 
                     $('#strainName').text(clickedSampleName);
                     $('#sampleCount').text(filteredSamples.length);
@@ -305,33 +286,227 @@
                     $('#matchingSamples').html(checkboxesHTML);
                     $('#summaryBox').show();
                 });
+				
+				
+				// Handle click on compound values to find similar samples
+				$('#fruitSamplesTable tbody').on('click', '.compound-clickable', function() {
+					var clickedValue = parseFloat($(this).data('value'));
+					var compoundName = $(this).data('compound');
 
-                // Handle click on compound values to find similar samples
-                $('#fruitSamplesTable tbody').on('click', '.compound-clickable', function() {
-                    var clickedValue = parseFloat($(this).data('value'));
-                    var compoundName = $(this).data('compound');
+					// Find samples with similar compound values (±10%)
+					var threshold = 0.1 * clickedValue; // 10% threshold
+					var similarSamples = data.filter(sample => {
+						var sampleValue = parseFloat(sample[compoundName]);
+						return Math.abs(sampleValue - clickedValue) <= threshold;
+					});
 
-                    // Find samples with similar compound values (±10%)
-                    var threshold = 0.1 * clickedValue; // 10% threshold
-                    var similarSamples = data.filter(sample => {
-                        var sampleValue = parseFloat(sample[compoundName]);
-                        return Math.abs(sampleValue - clickedValue) <= threshold;
-                    });
+					if (similarSamples.length > 0) {
+						// Extract data for the stacked bar chart
+						var sampleNames = similarSamples.map(sample => sample['Sample Name']);
+						var psilocinValues = similarSamples.map(sample => parseFloat(sample['Psilocin (mg/g)']) || 0);
+						var psilocybinValues = similarSamples.map(sample => parseFloat(sample['Psilocybin (mg/g)']) || 0);
+						var norbaeocystinValues = similarSamples.map(sample => parseFloat(sample['Norbaeocystin (mg/g)']) || 0);
+						var baeocystinValues = similarSamples.map(sample => parseFloat(sample['Baeocystin (mg/g)']) || 0);
+						var norpsilocinValues = similarSamples.map(sample => parseFloat(sample['Norpsilocin (mg/g)']) || 0);
+						var aeruginascinValues = similarSamples.map(sample => parseFloat(sample['Aeruginascin (mg/g)']) || 0);
+						var fourHOTMTValues = similarSamples.map(sample => parseFloat(sample['4-HO-TMT (mg/g)']) || 0);
 
-                    if (similarSamples.length > 0) {
-                        var sampleText = `${similarSamples.length} samples have a similar ${compoundName} value:<br><ul>`;
-                        similarSamples.forEach(sample => {
-                            sampleText += `<li>${sample['Sample Name']} - ${sample[compoundName]} mg/g</li>`;
-                        });
-                        sampleText += '</ul>';
-                    } else {
-                        var sampleText = "No similar samples found.";
-                    }
+						showStackedBarChart(sampleNames, psilocinValues, psilocybinValues, norbaeocystinValues, baeocystinValues, norpsilocinValues, aeruginascinValues, fourHOTMTValues);
+					} else {
+						alert("No similar samples found.");
+					}
+				});
 
-                    // Show modal with similar samples
-                    $('#similarSamplesText').html(sampleText);
-                    $('#similarSamplesModal').show();
-                });
+				// Function to show the stacked bar chart modal
+				function showStackedBarChart(sampleNames, psilocin, psilocybin, norbaeocystin, baeocystin, norpsilocin, aeruginascin, fourHOTMT) {
+					var ctx = document.getElementById('myChart').getContext('2d');
+
+					// Clear any previous chart
+					if (window.barChart) {
+						window.barChart.destroy();
+					}
+
+					window.barChart = new Chart(ctx, {
+						type: 'bar',
+						data: {
+							labels: sampleNames,
+							datasets: [
+								{
+									label: 'Psilocin (mg/g)',
+									data: psilocin,
+									backgroundColor: 'rgba(255, 99, 132, 0.5)',
+									borderColor: 'rgba(255, 99, 132, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Psilocybin (mg/g)',
+									data: psilocybin,
+									backgroundColor: 'rgba(54, 162, 235, 0.5)',
+									borderColor: 'rgba(54, 162, 235, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Norbaeocystin (mg/g)',
+									data: norbaeocystin,
+									backgroundColor: 'rgba(75, 192, 192, 0.5)',
+									borderColor: 'rgba(75, 192, 192, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Baeocystin (mg/g)',
+									data: baeocystin,
+									backgroundColor: 'rgba(153, 102, 255, 0.5)',
+									borderColor: 'rgba(153, 102, 255, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Norpsilocin (mg/g)',
+									data: norpsilocin,
+									backgroundColor: 'rgba(255, 159, 64, 0.5)',
+									borderColor: 'rgba(255, 159, 64, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Aeruginascin (mg/g)',
+									data: aeruginascin,
+									backgroundColor: 'rgba(255, 206, 86, 0.5)',
+									borderColor: 'rgba(255, 206, 86, 1)',
+									borderWidth: 1
+								},
+								{
+									label: '4-HO-TMT (mg/g)',
+									data: fourHOTMT,
+									backgroundColor: 'rgba(75, 192, 192, 0.5)',
+									borderColor: 'rgba(75, 192, 192, 1)',
+									borderWidth: 1
+								}
+							]
+						},
+						options: {
+							scales: {
+								x: {
+									stacked: true
+								},
+								y: {
+									stacked: true,
+									beginAtZero: true
+								}
+							},
+							responsive: true,
+							maintainAspectRatio: false
+						}
+					});
+
+					$('#chartModal').show();
+}
+
+				// Define default colors for each compound
+					var compoundColors = {
+						'Psilocin (mg/g)': 'rgba(255, 99, 132, 0.5)',       // Light red
+						'Psilocybin (mg/g)': 'rgba(54, 162, 235, 0.5)',     // Light blue
+						'Norbaeocystin (mg/g)': 'rgba(75, 192, 192, 0.5)',  // Light green
+						'Baeocystin (mg/g)': 'rgba(153, 102, 255, 0.5)',    // Light purple
+						'Norpsilocin (mg/g)': 'rgba(255, 159, 64, 0.5)',    // Light orange
+						'Aeruginascin (mg/g)': 'rgba(255, 206, 86, 0.5)',   // Light yellow
+						'4-HO-TMT (mg/g)': 'rgba(75, 192, 192, 0.5)'        // Light cyan
+					};
+
+				// Handle row click event for sample names to show summary and stats
+				$('#fruitSamplesTable tbody').on('click', '.clickable', function() {
+					var clickedSampleName = $(this).text();
+					var filteredSamples = data.filter(sample => sample['Sample Name'] === clickedSampleName);
+
+					// Extract data for the stacked bar chart
+					var sampleNames = filteredSamples.map(sample => sample['Sample Name']);
+					var psilocinValues = filteredSamples.map(sample => parseFloat(sample['Psilocin (mg/g)']) || 0);
+					var psilocybinValues = filteredSamples.map(sample => parseFloat(sample['Psilocybin (mg/g)']) || 0);
+					var norbaeocystinValues = filteredSamples.map(sample => parseFloat(sample['Norbaeocystin (mg/g)']) || 0);
+					var baeocystinValues = filteredSamples.map(sample => parseFloat(sample['Baeocystin (mg/g)']) || 0);
+					var norpsilocinValues = filteredSamples.map(sample => parseFloat(sample['Norpsilocin (mg/g)']) || 0);
+					var aeruginascinValues = filteredSamples.map(sample => parseFloat(sample['Aeruginascin (mg/g)']) || 0);
+					var fourHOTMTValues = filteredSamples.map(sample => parseFloat(sample['4-HO-TMT (mg/g)']) || 0);
+
+					showCompoundSelectionModal(sampleNames, psilocinValues, psilocybinValues, norbaeocystinValues, baeocystinValues, norpsilocinValues, aeruginascinValues, fourHOTMTValues);
+				});
+
+				// Function to show the compound selection modal with default selected compounds
+				function showCompoundSelectionModal(sampleNames, psilocin, psilocybin, norbaeocystin, baeocystin, norpsilocin, aeruginascin, fourHOTMT) {
+					var compounds = {
+						'Psilocin (mg/g)': psilocin,
+						'Psilocybin (mg/g)': psilocybin,
+						'Norbaeocystin (mg/g)': norbaeocystin,
+						'Baeocystin (mg/g)': baeocystin,
+						'Norpsilocin (mg/g)': norpsilocin,
+						'Aeruginascin (mg/g)': aeruginascin,
+						'4-HO-TMT (mg/g)': fourHOTMT
+					};
+
+					$('#compoundSelection').html(compoundOptions);
+					$('#compoundModal').show();
+
+					$('#generateCompoundGraph').off('click').on('click', function() {
+						var selectedCompounds = [];
+						var selectedColors = [];
+
+
+
+						if (selectedCompounds.length > 0) {
+							showCustomStackedBarChart(sampleNames, selectedCompounds);
+						} else {
+							alert('Please select at least one compound.');
+						}
+
+						$('#compoundModal').hide();
+					});
+				}
+
+				// Function to show the custom stacked bar chart
+				function showCustomStackedBarChart(sampleNames, selectedCompounds) {
+					var ctx = document.getElementById('myChart').getContext('2d');
+
+					// Clear any previous chart
+					if (window.barChart) {
+						window.barChart.destroy();
+					}
+
+					var datasets = selectedCompounds.map(function(compoundObj) {
+						return {
+							label: compoundObj.compound,
+							data: compoundObj.values,
+							backgroundColor: compoundObj.color,
+							borderColor: compoundObj.color.replace('0.5', '1'),
+							borderWidth: 1
+						};
+					});
+
+					window.barChart = new Chart(ctx, {
+						type: 'bar',
+						data: {
+							labels: sampleNames,
+							datasets: datasets
+						},
+						options: {
+							scales: {
+								x: {
+									stacked: true
+								},
+								y: {
+									stacked: true,
+									beginAtZero: true
+								}
+							},
+							responsive: true,
+							maintainAspectRatio: false
+						}
+					});
+
+					$('#chartModal').show();
+				}
+
+				// Close the compound selection modal
+				$('#compoundModalClose').on('click', function() {
+					$('#compoundModal').hide();
+				});
 
                 // Close the summary box
                 $('#summaryBoxClose').on('click', function() {
@@ -343,22 +518,32 @@
                     $('#similarSamplesModal').hide();
                 });
 
-                // Graph generation from the summary box checkboxes
-                $('#generateGraph').on('click', function() {
-                    var selectedSamples = [];
-                    $('.sampleCheckbox:checked').each(function() {
-                        selectedSamples.push($(this).val());
-                    });
+				// Graph generation from the summary box checkboxes
+				$('#generateGraph').on('click', function() {
+					var selectedSamples = [];
+					$('.sampleCheckbox:checked').each(function() {
+						selectedSamples.push($(this).val());
+					});
 
-                    if (selectedSamples.length > 0) {
-                        var filteredSamples = data.filter(sample => selectedSamples.includes(sample['Sample Name']));
-                        var psilocinEQValues = filteredSamples.map(sample => parseFloat(sample['PsilocinEQ (mg/g)']));
+					if (selectedSamples.length > 0) {
+						var filteredSamples = data.filter(sample => selectedSamples.includes(sample['Sample Name']));
 
-                        showGraphModal(selectedSamples, psilocinEQValues);
-                    } else {
-                        alert('Please select at least one sample.');
-                    }
-                });
+						// Extract compound values for stacked bar chart
+						var sampleNames = filteredSamples.map(sample => sample['Sample Name']);
+						var psilocinValues = filteredSamples.map(sample => parseFloat(sample['Psilocin (mg/g)']) || 0);
+						var psilocybinValues = filteredSamples.map(sample => parseFloat(sample['Psilocybin (mg/g)']) || 0);
+						var norbaeocystinValues = filteredSamples.map(sample => parseFloat(sample['Norbaeocystin (mg/g)']) || 0);
+						var baeocystinValues = filteredSamples.map(sample => parseFloat(sample['Baeocystin (mg/g)']) || 0);
+						var norpsilocinValues = filteredSamples.map(sample => parseFloat(sample['Norpsilocin (mg/g)']) || 0);
+						var aeruginascinValues = filteredSamples.map(sample => parseFloat(sample['Aeruginascin (mg/g)']) || 0);
+						var fourHOTMTValues = filteredSamples.map(sample => parseFloat(sample['4-HO-TMT (mg/g)']) || 0);
+
+						// Generate the stacked bar chart with the selected samples and their compounds
+						showStackedBarChart(sampleNames, psilocinValues, psilocybinValues, norbaeocystinValues, baeocystinValues, norpsilocinValues, aeruginascinValues, fourHOTMTValues);
+					} else {
+						alert('Please select at least one sample.');
+					}
+				});
 
                 // Graph generation from the table-selected checkboxes
                 $('#generateGraphFromTable').on('click', function() {
@@ -369,45 +554,101 @@
 
                     if (selectedSamples.length > 0) {
                         var filteredSamples = data.filter(sample => selectedSamples.includes(sample['Sample Name']));
-                        var psilocinEQValues = filteredSamples.map(sample => parseFloat(sample['PsilocinEQ (mg/g)']));
+                        var sampleNames = filteredSamples.map(sample => sample['Sample Name']);
+						var psilocinValues = filteredSamples.map(sample => parseFloat(sample['Psilocin (mg/g)']) || 0);
+						var psilocybinValues = filteredSamples.map(sample => parseFloat(sample['Psilocybin (mg/g)']) || 0);
+						var norbaeocystinValues = filteredSamples.map(sample => parseFloat(sample['Norbaeocystin (mg/g)']) || 0);
+						var baeocystinValues = filteredSamples.map(sample => parseFloat(sample['Baeocystin (mg/g)']) || 0);
+						var norpsilocinValues = filteredSamples.map(sample => parseFloat(sample['Norpsilocin (mg/g)']) || 0);
+						var aeruginascinValues = filteredSamples.map(sample => parseFloat(sample['Aeruginascin (mg/g)']) || 0);
+						var fourHOTMTValues = filteredSamples.map(sample => parseFloat(sample['4-HO-TMT (mg/g)']) || 0);
 
-                        showGraphModal(selectedSamples, psilocinEQValues);
-                    } else {
-                        alert('Please select at least one sample.');
-                    }
-                });
+					   // Pass the extracted data to the graph modal
+						showStackedBarChart(sampleNames, psilocinValues, psilocybinValues, norbaeocystinValues, baeocystinValues, norpsilocinValues, aeruginascinValues, fourHOTMTValues);
+					} else {
+						alert('Please select at least one sample.');
+					}
+				});
 
-                // Function to show the chart modal
-                function showGraphModal(sampleNames, psilocinEQValues) {
-                    var ctx = document.getElementById('myChart').getContext('2d');
+                // Function to show the stacked bar chart modal
+				function showStackedBarChart(sampleNames, psilocin, psilocybin, norbaeocystin, baeocystin, norpsilocin, aeruginascin, fourHOTMT) {
+					var ctx = document.getElementById('myChart').getContext('2d');
 
-                    // Clear any previous chart
-                    if (window.barChart) {
-                        window.barChart.destroy();
-                    }
+					// Clear any previous chart
+					if (window.barChart) {
+						window.barChart.destroy();
+					}
 
-                    window.barChart = new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: sampleNames,
-                            datasets: [{
-                                label: 'PsilocinEQ (mg/g)',
-                                data: psilocinEQValues,
-                                backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            scales: {
-                                y: {
-                                    beginAtZero: true
-                                }
-                            },
-                            responsive: true,
-                            maintainAspectRatio: false
-                        }
-                    });
+					window.barChart = new Chart(ctx, {
+						type: 'bar',
+						data: {
+							labels: sampleNames,
+							datasets: [
+								{
+									label: 'Psilocin (mg/g)',
+									data: psilocin,
+									backgroundColor: 'rgba(255, 99, 132, 0.5)',
+									borderColor: 'rgba(255, 99, 132, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Psilocybin (mg/g)',
+									data: psilocybin,
+									backgroundColor: 'rgba(54, 162, 235, 0.5)',
+									borderColor: 'rgba(54, 162, 235, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Norbaeocystin (mg/g)',
+									data: norbaeocystin,
+									backgroundColor: 'rgba(75, 192, 192, 0.5)',
+									borderColor: 'rgba(75, 192, 192, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Baeocystin (mg/g)',
+									data: baeocystin,
+									backgroundColor: 'rgba(153, 102, 255, 0.5)',
+									borderColor: 'rgba(153, 102, 255, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Norpsilocin (mg/g)',
+									data: norpsilocin,
+									backgroundColor: 'rgba(255, 159, 64, 0.5)',
+									borderColor: 'rgba(255, 159, 64, 1)',
+									borderWidth: 1
+								},
+								{
+									label: 'Aeruginascin (mg/g)',
+									data: aeruginascin,
+									backgroundColor: 'rgba(255, 206, 86, 0.5)',
+									borderColor: 'rgba(255, 206, 86, 1)',
+									borderWidth: 1
+								},
+								{
+									label: '4-HO-TMT (mg/g)',
+									data: fourHOTMT,
+									backgroundColor: 'rgba(75, 192, 192, 0.5)',
+									borderColor: 'rgba(75, 192, 192, 1)',
+									borderWidth: 1
+								}
+							]
+						},
+						options: {
+							scales: {
+								x: {
+									stacked: true
+								},
+								y: {
+									stacked: true,
+									beginAtZero: true
+								}
+							},
+							responsive: true,
+							maintainAspectRatio: false
+						}
+					});
 
                     $('#chartModal').show();
                 }
@@ -418,38 +659,7 @@
                 });
             });
 
-            // Chatbot interaction
-            function sendMessage() {
-                var message = $('#userInput').val();
-                $('#chatlog').append('<div>You: ' + message + '</div>');
-                $('#userInput').val('');
 
-                // Send query to Flask backend for processing
-                $.ajax({
-                    url: '/chatbot',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ query: message }),
-                    success: function(response) {
-                        $('#chatlog').append('<div>Bot: ' + response.message + '</div>');
-
-                        // If the response contains chart data, render it
-                        if (response.chartData) {
-                            renderChart(response.chartData);
-                        }
-
-                        // If the response contains table filtering instructions, filter the table
-                        if (response.filter && response.filter.length > 0) {
-                            filterTable(response.filter);
-                        }
-                    }
-                });
-            }
-
-            function askSuggestion(question) {
-                $('#userInput').val(question);
-                sendMessage();
-            }
 
             function filterTable(filterText) {
                 table.search(filterText).draw();

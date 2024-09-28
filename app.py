@@ -18,11 +18,11 @@ def get_data():
     return df.to_json(orient='records')
 
 # Chatbot endpoint to handle queries and generate graphs
-@app.route('/chatbot', methods=['POST'])
-def chatbot():
-    query = request.json.get('query')
-    response = handle_query(query)
-    return jsonify(response)
+#@app.route('/chatbot', methods=['POST'])
+#def chatbot():
+ #   query = request.json.get('query')
+  #  response = handle_query(query)
+   # return jsonify(response)
 
 def handle_query(query):
     # Suggested responses to guide users on available features

@@ -93,10 +93,6 @@ def clean_data(df):
 df_renamed = df.rename(columns=column_mapping)
 
 
-# Save the updated dataframe
-output_file_path = 'path_to_save/updated_coa_data.csv'  # Update this path
-df_renamed.to_csv(output_file_path, index=False)
-
 # Confirm changes
 print(df_renamed.head())
 
@@ -105,29 +101,29 @@ print(df_renamed.head())
 
 
     # Extract the selected columns
-    extracted_df = df[columns_to_extract]
+extracted_df = df[columns_to_extract]
 
     # Replace " mg/srv", " mg/pkg", " mg/g" with nothing
-    extracted_df = extracted_df.replace({
-        " mg/srv": "", 
-        " mg/pkg": "", 
-        " mg/g": ""
-    }, regex=True)
+extracted_df = extracted_df.replace({
+    " mg/srv": "", 
+    " mg/pkg": "", 
+    " mg/g": ""
+}, regex=True)
 
     # Replace "Alkaloid_1_" with nothing and "_Amount_" with " "
-    extracted_df.columns = extracted_df.columns.str.replace("Alkaloid_1_", "", regex=True)
-    extracted_df.columns = extracted_df.columns.str.replace("_Amount_", " ", regex=True)
+extracted_df.columns = extracted_df.columns.str.replace("Alkaloid_1_", "", regex=True)
+extracted_df.columns = extracted_df.columns.str.replace("_Amount_", " ", regex=True)
 
     # Convert only columns containing 'MgG', 'MgPkg', or 'MgSrv' to numeric
-    columns_to_convert = [col for col in extracted_df.columns if any(x in col for x in ['MgG', 'MgPkg', 'MgSrv'])]
+columns_to_convert = [col for col in extracted_df.columns if any(x in col for x in ['MgG', 'MgPkg', 'MgSrv'])]
     
-    for column in columns_to_convert:
-        extracted_df[column] = pd.to_numeric(extracted_df[column], errors='coerce')
+for column in columns_to_convert:
+    extracted_df[column] = pd.to_numeric(extracted_df[column], errors='coerce')
 
     # Remove columns where all values are 0
     extracted_df = extracted_df.loc[:, (extracted_df != 0).any(axis=0)]
     
-    return extracted_df
+return extracted_df
 
 # Function to upload and clean the file
 def upload_and_clean():
